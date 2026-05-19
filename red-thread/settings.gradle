@@ -1,0 +1,46 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    // Apply the foojay-resolver plugin to allow automatic download of JDKs
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+    id "de.fayard.refreshVersions" version "0.60.6"
+}
+
+refreshVersions {
+    rejectVersionIf {
+        candidate.stabilityLevel.isLessStableThan(current.stabilityLevel)
+    }
+}
+
+rootProject.name = 'red-thread'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Version catalogs
+//
+// Red Thread uses a single root version catalog in gradle/libs.versions.toml.
+// Shared/default dependency aliases in this catalog must include the `iff`
+// prefix.
+//
+// If a future subproject requires a diverging dependency version, add a
+// subproject-specific alias that includes the subproject name.
+// Example: system-admin specific aliases should include `system-admin`.
+// ─────────────────────────────────────────────────────────────────────────────
+// Microservice subprojects
+//
+// Each microservice is an independently buildable, deployable, and maintainable
+// Gradle subproject.  To build a single microservice:
+//   ./gradlew :system-admin:build
+//
+// Add new microservices below as they are created, e.g.:
+//   include('user-account')
+//   include('social-network')
+// ─────────────────────────────────────────────────────────────────────────────
+include('system-admin')
+include('user-account')
+include('auth-server')
+include('relationship')
+include('social-network')

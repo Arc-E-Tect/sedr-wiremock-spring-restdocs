@@ -1,0 +1,20 @@
+:favicon: ./images/favicon/favicon.png
+
+:doctype: book
+:icons: font
+:source-highlighter: highlightjs
+:toc: left
+:toclevels: 2
+:sectlinks:
+
+image:images/red-thread-logo-transparent.png[float="left", width=50, height=50]
+
+= User-Account API Documentation
+
+Welcome to the User-Account API documentation.
+
+This documentation provides an overview of the User-Account APIs, including how to use them, how to register as a developer, and how to request an API Key.
+
+In case you are looking for the API reference documentation, you can find it in the https://developer.red-thread.com/reference[API Reference] section of the Red Thread developer portal.
+
+TIP: Any questions or issues related to the API can be reported in the https://developer.red-thread.com/issues[Red Thread API Issue Tracker] on the Red Thread developer portal.

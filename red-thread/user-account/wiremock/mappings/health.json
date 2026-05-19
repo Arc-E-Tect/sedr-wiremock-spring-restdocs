@@ -1,0 +1,19 @@
+{
+  "priority": 10,
+  "request": {
+    "method": "GET",
+    "url": "/actuator/health",
+    "headers" : {
+      "Accept" : {
+        "equalTo" : "application/json"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers" : {
+      "Content-Type" : [ "application/json"]
+    },
+    "bodyFileName" : "responseHealth.json"
+  }
+}

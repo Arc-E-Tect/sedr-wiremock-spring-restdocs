@@ -1,0 +1,20 @@
+{
+  "id": "8e5235f8-c626-42f2-bad3-25e0bc788761",
+  "request": {
+    "urlPath": "/",
+    "method": "GET",
+    "headers": {
+      "Accept": {
+        "equalTo": "application/json"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": "{\n  \"versionName\": \"Relationship\",\n  \"versionCode\": 1.0\n}\n",
+    "headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "uuid": "8e5235f8-c626-42f2-bad3-25e0bc788761"
+}

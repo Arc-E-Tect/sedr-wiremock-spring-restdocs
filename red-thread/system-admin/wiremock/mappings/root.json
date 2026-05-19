@@ -1,0 +1,23 @@
+{
+  "priority": 10,
+  "request": {
+    "method": "GET",
+    "url": "/"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "versionName": "IFF",
+      "versionCode": 1.0,
+      "dependencies": {
+        "user-account":   { "versionName": "UserAccount",   "versionCode": 1.0 },
+        "auth-server":    { "versionName": "AuthServer",    "versionCode": 1.0 },
+        "relationship":   { "versionName": "Relationship",  "versionCode": 1.0 },
+        "social-network": { "versionName": "SocialNetwork", "versionCode": 1.0 }
+      }
+    }
+  }
+}

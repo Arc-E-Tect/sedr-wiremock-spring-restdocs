@@ -1,0 +1,264 @@
+/*
+ * Build file for the SystemAdmin microservice.
+ *
+ * This subproject is self-contained and independently buildable:
+ *   ./gradlew :system-admin:build          – build and verify
+ *   ./gradlew :system-admin:bootRun        – run locally
+ *   ./gradlew :system-admin:bootJar        – produce the deployable JAR
+ *
+ * Repositories are inherited from the root subprojects {} block.
+ * All other configuration is intentionally local to this file so that this
+ * microservice can be extracted into a separate repository later if needed.
+ */
+
+buildscript {
+    ext {
+        minCodeCoverage = 1.0
+    }
+}
+
+import java.text.SimpleDateFormat
+
+import static de.fayard.refreshVersions.core.Versions.versionFor
+
+plugins {
+    // Apply the application plugin to add support for building a CLI application in Java.
+    id 'application'
+    id 'jacoco'
+    id 'project-report'
+
+    alias libs.plugins.iff.org.owasp.dependencycheck
+    alias libs.plugins.iff.io.freefair.lombok
+
+    alias libs.plugins.iff.io.spring.dependency.management
+    alias libs.plugins.iff.org.springframework.boot
+
+    alias libs.plugins.iff.org.asciidoctor.jvm.convert
+
+}
+
+// set the version of junit-jupiter to the version defined in
+// the libs.versions.toml file explicitly
+ext['junit-jupiter.version'] = libs.versions.iff.junit.jupiter.get()
+
+dependencies {
+    testImplementation libs.bundles.iff.junit
+    testImplementation libs.bundles.iff.spring.restdocs
+    testImplementation libs.iff.spring.cloud.contract.wiremock
+    testImplementation libs.iff.wiremock.spring.boot
+    // Keep the Jetty stack used by WireMock on a single compatible version.
+    testImplementation(enforcedPlatform(libs.iff.jetty.bom))
+    testImplementation(enforcedPlatform(libs.iff.jetty.ee10.bom))
+
+    implementation libs.bundles.iff.spring.boot
+    implementation libs.iff.sedr.library
+
+    compileOnly libs.iff.jakarta.servlet.api
+
+}
+
+ext['junit-jupiter.version'] = libs.versions.iff.junit.jupiter.get()
+
+// Apply a specific Java toolchain to ease working on different environments.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    // Define the main class for the application.
+    mainClass = 'com.arc_e_tect.book.sedr.redthread.iff.App'
+}
+
+testing {
+    suites {
+        test {
+            useJUnitJupiter()
+        }
+
+        register("docGen", JvmTestSuite) {
+            useJUnitJupiter()
+            dependencies {
+                implementation(project())
+            }
+            sources {
+                java { srcDirs = ['src/docGen/java'] }
+                resources { srcDirs = ['src/docGen/resources'] }
+            }
+            targets {
+                configureEach {
+                    testTask.configure {
+                        failOnNoDiscoveredTests = false
+                    }
+                }
+            }
+        }
+
+    }
+}
+
+configurations {
+    docGenImplementation.extendsFrom testImplementation
+    asciidoctorExtensions
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+    testLogging.showStandardStreams = true
+    reports {
+        junitXml.required = true
+        html.required = true
+    }
+}
+
+jacoco {
+    toolVersion = versionFor(project, "version.org.jacoco..org.jacoco.agent")
+}
+
+jacocoTestCoverageVerification {
+    dependsOn "test"
+    executionData layout.buildDirectory.file("jacoco/test.exec")
+    classDirectories.setFrom(
+        sourceSets.main.output.classesDirs.asFileTree.matching {
+            exclude '**/App.class', '**/jacoco/marker/**'
+        }
+    )
+    violationRules {
+        rule {
+            limit {
+                minimum = minCodeCoverage
+            }
+        }
+    }
+}
+
+test {
+    finalizedBy jacocoTestCoverageVerification
+}
+
+test {
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    dependsOn "test"
+    executionData layout.buildDirectory.file("jacoco/test.exec")
+    sourceDirectories.setFrom(sourceSets.main.allSource.srcDirs)
+    classDirectories.setFrom(
+        sourceSets.main.output.classesDirs.asFileTree.matching {
+            exclude '**/App.class', '**/jacoco/marker/**'
+        }
+    )
+    reports {
+        xml.required = false
+        csv.required = false
+        html.required = true
+    }
+}
+
+check.dependsOn jacocoTestCoverageVerification
+
+dependencyCheck {
+    nvd.apiKey = System.getenv('NVD_APIKEY_SEDR')
+    nvd.delay = 16000
+    analyzers.assemblyEnabled = false
+}
+
+ext {
+    productName = project.findProperty('productName') ?: 'IFF'
+    version = project.findProperty('version') ?: '0.0.1'
+}
+
+processResources {
+    def prodName = productName
+    def prodVersion = version
+    filesMatching('**/application.properties') {
+        expand(productName: prodName, version: prodVersion)
+    }
+}
+
+bootJar {
+    mainClass  = 'com.arc_e_tect.book.sedr.redthread.iff.App'
+    manifest {
+        attributes(
+                'Implementation-Title'  : productName,
+                'Implementation-Version': version,
+                'Built-By'              : System.properties['user.name'],
+                'Build-Timestamp'       : new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").format(new Date()),
+                'Created-By'            : "Gradle ${gradle.gradleVersion}",
+                'Build-Jdk'             : "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
+                'Build-OS'              : "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}"
+        )
+    }
+
+    from ("${asciidoctor.outputDir}") {
+        into 'static/docs'
+    }
+}
+
+springBoot {
+    buildInfo {
+        properties {
+            name = "${project.name}"
+            additional = [
+                    by: System.properties['user.name'],
+                    continuousIntegration: System.getenv('CI') ? true: false,
+            ]
+        }
+    }
+}
+
+dependencies {
+    asciidoctorExtensions libs.iff.spring.restdocs.asciidoctor
+}
+
+asciidoctorj {
+    version = '3.0.0'
+}
+
+ext {
+    snippetsDir = file('build/generated-snippets')
+    wiremockStubsDir = file('build/wiremock/stubs')
+}
+
+test {
+    outputs.dir snippetsDir
+}
+
+tasks.named("docGen") {
+    outputs.dir snippetsDir
+    finalizedBy(tasks.named("syncWiremockStubs"))
+}
+
+// Keep a clear, dedicated location for generated WireMock mappings so
+// consumers can find contract stubs under build/wiremock/stubs.
+tasks.register("syncWiremockStubs", Sync) {
+    from(file("$buildDir/generated-snippets/stubs"))
+    into(wiremockStubsDir)
+    includeEmptyDirs = false
+}
+
+asciidoctor {
+    dependsOn "docGen"
+    inputs.dir snippetsDir
+    configurations 'asciidoctorExtensions'
+
+    attributes "snippets": snippetsDir,
+            "source-highlighter": "coderay",
+            "version": version,
+            "date": new SimpleDateFormat("yyyy-MM-dd").format(new Date()),
+            "stylesheet": "themes/riak.css"
+
+    logDocuments = true
+    outputDir = "build/docs/sdk"
+    baseDirFollowsSourceDir()
+    notCompatibleWithConfigurationCache("Asciidoctor plugin is not configuration-cache safe")
+
+}

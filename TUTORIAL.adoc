@@ -1,0 +1,883 @@
+= WireMock Stub Generation: A Comprehensive Training Guide
+:toc:
+:toclevels: 3
+:sectnums:
+:imagesdir: ./images
+:experimental:
+:source-highlighter: rouge
+
+== Introduction
+
+This document explains how WireMock stubs are automatically generated in the Red Thread project and how they are used to enable frontend development in Blue Needle without requiring the full backend to be running.
+It is designed as a comprehensive training guide for developers who understand APIs but may not be familiar with WireMock or REST Docs.
+
+=== What is WireMock?
+
+WireMock is a tool that allows you to create a **mock HTTP server** that simulates the behavior of a real API.
+Instead of making requests to an actual backend service, your client application can make requests to WireMock, which responds with pre-configured responses based on request matching rules.
+
+Think of WireMock as a **scripted actor** in a play:
+- The real application is the method, studying the script and understanding it deeply.
+- WireMock is the understudies, memorizing the script lines and delivering them on cue with exactly the same words and timing.
+
+=== Why Should You Care?
+
+WireMock matters because:
+
+1. **Frontend teams can develop without backend teams**: A frontend developer working on Blue Needle doesn't need the full Red Thread backend running. They can use WireMock stubs to develop against a stable, predictable API contract.
+2. **Tests run faster**: Mock HTTP responses are nearly instantaneous compared to real database queries and business logic execution.
+3. **Tests are more reliable**: WireMock stubs have consistent, deterministic behavior—no flaky network timeouts, no database connection failures.
+4. **API contracts stay in sync**: By automatically generating stubs from the same test code that validates the real API, you guarantee that the mock and the real implementation agree on what the API should return.
+
+== Understanding API Specifications and Contracts
+
+=== What is an API Specification?
+
+An API specification is a **formal description of what an API should do**.
+It defines:
+
+- Which endpoints exist (e.g., `GET /users/{id}`, `POST /relationships`)
+- What request parameters each endpoint accepts
+- What response the endpoint should return for each scenario
+- What HTTP status codes are valid (e.g., 200 for success, 404 for not found)
+- What headers are required or optional
+- The data types and structure of request and response bodies
+
+In Red Thread, API specifications are written in **OpenAPI 3.1.1** format, a standardized, machine-readable format that describes REST APIs.
+
+=== What is a Contract?
+
+A **contract** is a binding agreement between:
+
+- The **provider** (the backend service that exposes the API)
+- The **consumer** (the client that calls the API, like Blue Needle)
+
+The contract says: "If you send me a request shaped like X, I promise to return a response shaped like Y."
+
+In practice, a contract is enforced by running **contract tests** that verify:
+
+1. The provider (backend) returns responses that match the OpenAPI specification
+2. The consumer (frontend or another service) handles those responses correctly
+
+=== The Problem: Contracts Drift
+
+Without discipline, **specifications and implementations drift apart**:
+
+- The OpenAPI spec says a user object has fields `{ id, name, email }`
+- The developer adds a `phone` field to the response but forgets to update the spec
+- The consumer application crashes because it assumes the `phone` field is not there
+- A new consumer is written based on the old spec and fails at runtime
+
+This is called **contract drift**, and it's a major source of bugs in microservice architectures.
+
+== The Value of Testing API Specification Compliance
+
+=== Why Test Against a Specification?
+
+Testing compliance with an API specification ensures:
+
+1. **Consistency**: Every version of the API adheres to what was promised. Consumers know what to expect.
+2. **Early detection**: Contract violations are caught during development, not in production.
+3. **Documentation by example**: Contract tests serve as executable documentation. They show exactly what the API does in different scenarios.
+4. **Backward compatibility verification**: When you change the API, contract tests tell you immediately if you've broken existing consumers.
+
+=== How Contract Testing Works
+
+Contract tests are integration tests that:
+
+1. Start the actual service (or a mock of it)
+2. Make HTTP requests to specific endpoints
+3. Verify that the response matches the OpenAPI specification
+
+For example, a contract test might:
+
+----
+# Request
+GET /users/123
+
+# Expected Response (from OpenAPI spec)
+Status: 200 OK
+{
+  "id": 123,
+  "name": "Alice",
+  "email": "alice@example.com"
+}
+----
+
+If the service returns `Status: 404` or a response missing the `email` field, the contract test fails and alerts the team that something is wrong.
+
+== Benefits of Automated Stub Generation
+
+=== The Traditional Problem
+
+Typically, creating mock stubs is a manual, error-prone process:
+
+1. A developer reads the API specification
+2. Manually writes JSON files representing "what the API should return"
+3. Maintains those files separately from the actual implementation
+4. Gradually the mock files diverge from the real API
+5. Frontend developers rely on outdated mocks and waste time debugging
+
+=== The Red Thread Solution: Automatic Generation
+
+Red Thread automatically generates WireMock stubs from the same test code that validates the real API.
+This is achieved through **Spring REST Docs** combined with the **WireMockSnippet** from Spring Cloud Contract.
+
+Here's the flow:
+
+[source, text]
+----
+1. Write a contract test in src/docGen/java
+   ├─ Test calls the real service endpoint
+   ├─ REST Docs records the request and response
+   └─ Test makes assertions about the response
+
+2. Run the docGen task
+   ├─ Compile and run the test
+   ├─ Generate REST Docs snippets (request/response)
+   └─ WireMockSnippet converts those snippets into WireMock stub mappings
+
+3. Stubs are written to build/wiremock/stubs/
+   ├─ Mappings are JSON files in WireMock format
+   ├─ Stubs are ready to be used by Blue Needle
+   └─ Stubs are guaranteed to match what the test verified
+----
+
+=== Key Benefits
+
+1. **Single source of truth**: The test is the specification. Stubs are generated from the test, so they cannot drift.
+2. **Verification**: The stubs are generated from a test that passed against the real service. You know the mock matches reality.
+3. **Maintainability**: When the API changes, the test changes, the stubs are automatically regenerated, and consumers are immediately notified.
+4. **Zero manual effort**: No manual JSON file creation or maintenance.
+
+== How Stub Generation Works in Red Thread
+
+=== Overview
+
+Red Thread uses a sophisticated multi-tier testing approach where stubs are generated automatically as a byproduct of contract testing.
+
+=== The docGen Task
+
+The `docGen` test suite is the engine of stub generation.
+
+**Location**: `src/docGen/java/` in each microservice
+
+**Command to run**:
+[source, bash]
+----
+./gradlew :system-admin:docGen
+./gradlew :user-account:docGen
+./gradlew :auth-server:docGen
+./gradlew :relationship:docGen
+./gradlew :social-network:docGen
+----
+
+**What docGen does**:
+
+1. **Starts the actual embedded application** (e.g., User Account microservice)
+   - The real Spring Boot application runs inside the test process
+   - It connects to a PostgreSQL database (provided by Testcontainers)
+   - It listens on a dedicated HTTPS port (e.g., 9580 for user-account)
+
+2. **Makes HTTP calls to the real service**
+   - Test methods call endpoints like `GET /users/{id}` or `POST /relationships`
+   - Requests are made to the real embedded application
+   - Responses are captured
+
+3. **Records requests and responses** via Spring REST Docs
+   - Every HTTP interaction is recorded to `build/generated-snippets/`
+   - Snippets include request details, response headers, response body
+
+4. **Generates WireMock stubs** via WireMockSnippet
+   - The `WireMockSnippet` class (from Spring Cloud Contract) processes the REST Docs snippets
+   - It generates WireMock mapping files in JSON format
+   - Mappings are written to `build/wiremock/stubs/`
+
+=== Example: A docGen Test
+
+Here's a simplified example of what a docGen test looks like:
+
+[source, java]
+----
+@Slf4j
+@Testcontainers
+@ExtendWith({ RestDocumentationExtension.class, SpringExtension.class })
+@SpringBootTest(...)
+public class DocumentationGenerator {
+
+    @Container
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgres = 
+        new PostgreSQLContainer<>("postgres:17-alpine");
+
+    @InjectWireMock(...)
+    protected WireMockServer wireMockServer;
+
+    @BeforeEach
+    void setUp(WebApplicationContext ctx, 
+               RestDocumentationContextProvider restDocs) {
+        // Configure REST Docs with WireMockSnippet
+        WebTestClientRestDocumentationConfigurer docsConfig = 
+            documentationConfiguration(restDocs);
+        docsConfig.snippets()
+            .withAdditionalDefaults(new WireMockSnippet());
+    }
+
+    @Test
+    void documentGetUserById() {
+        // Make an HTTP call to the embedded service
+        client.get()
+            .uri("/users/123")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody()
+            .jsonPath("$.id").isEqualTo(123);
+        
+        // REST Docs captures this interaction
+        // WireMockSnippet converts it to a stub mapping
+    }
+}
+----
+
+When this test runs:
+
+1. ✅ Test passes (the real service returned the expected response)
+2. ✅ REST Docs records the request/response to a snippet file
+3. ✅ WireMockSnippet generates a stub mapping from the snippet
+4. ✅ The stub mapping is written to `build/wiremock/stubs/`
+
+=== What Gets Generated: Stub Mapping Files
+
+WireMock stubs are stored as JSON mapping files.
+Each file describes one API endpoint and how to match requests to responses.
+
+**Example stub mapping** (simplified):
+
+[source, json]
+----
+{
+  "id": "12345abc",
+  "name": "Get User by ID",
+  "request": {
+    "method": "GET",
+    "url": "/users/123",
+    "headers": {
+      "Content-Type": { "equalTo": "application/json" },
+      "Accept": { "equalTo": "application/json" }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\"id\":123,\"name\":\"Alice\",\"email\":\"alice@example.com\"}"
+  }
+}
+----
+
+When WireMock receives a request matching:
+- Method: `GET`
+- URL: `/users/123`
+- Headers: `Content-Type: application/json`, `Accept: application/json`
+
+It responds with the configured response (status 200, JSON body, etc.).
+
+=== Output Location
+
+After running `./gradlew :user-account:docGen`, stub mappings are written to:
+
+[source, text]
+----
+user-account/build/wiremock/stubs/
+├── mappings/
+│   ├── get_users_by_id.json
+│   ├── post_relationships.json
+│   └── ... (one file per endpoint scenario)
+└── __files/
+    └── (response payloads, if large)
+----
+
+=== Key Characteristics of Generated Stubs
+
+1. **Complete**: Every endpoint tested in docGen has a corresponding stub mapping
+2. **Accurate**: Mappings are generated from the actual request/response captured during the test
+3. **Parameterized**: Mappings can use WireMock's templating to match patterns (e.g., any user ID, not just 123)
+4. **Verified**: The test that generated the mapping must pass, ensuring the stub matches reality
+
+== How Blue Needle Uses the Generated Stubs
+
+=== The Workflow
+
+Blue Needle (the Angular frontend) uses WireMock stubs to enable local development without a full backend.
+
+[source, text]
+----
+Microservice               Blue Needle
+(Red Thread)              (Frontend)
+     │                         │
+     ├─ Run docGen             │
+     │  Generates stubs    ────┘
+     │
+     └─ Copy stubs to Blue Needle/wiremock/
+        or download them
+
+                              Blue Needle
+                              ├─ npm run stubs:prepare
+                              │  (normalize stubs)
+                              └─ npm run smoke:test
+                                 (run tests against stubs)
+----
+
+=== Steps to Use Generated Stubs in Blue Needle
+
+**Step 1: Generate stubs from Red Thread**
+
+From the `red-thread` directory:
+[source, bash]
+----
+./gradlew :system-admin:docGen \
+          :user-account:docGen \
+          :auth-server:docGen \
+          :relationship:docGen \
+          :social-network:docGen
+----
+
+This generates stub mappings in:
+- `system-admin/build/wiremock/stubs/`
+- `user-account/build/wiremock/stubs/`
+- (etc. for all five microservices)
+
+**Step 2: Copy stubs to Blue Needle**
+
+The stubs are organized in Blue Needle's `wiremock/` directory:
+
+[source, text]
+----
+blue-needle/
+├── wiremock/
+│   ├── mappings/
+│   │   ├── system-admin/mappings/
+│   │   ├── user-account/mappings/
+│   │   ├── auth-server/mappings/
+│   │   ├── relationship/mappings/
+│   │   └── social-network/mappings/
+│   └── __files/
+│       └── (response payloads)
+----
+
+**Step 3: Normalize stubs (prepare for browser clients)**
+
+Blue Needle runs:
+[source, bash]
+----
+npm run stubs:prepare
+----
+
+This step **normalizes** the generated stubs for use in a browser environment.
+It removes:
+- Internal HTTP headers like `User-Agent`, `accept-encoding` (which the docGen test sent but browsers don't)
+- Response headers like `Matched-Stub-Id`, `Transfer-Encoding` (WireMock internals)
+- Content-Type matching for bodyless methods like `GET` and `DELETE` (because browsers don't send Content-Type for these)
+
+**Why normalization is needed**: The docGen test runs in the JVM and sends headers that a browser client wouldn't send.
+If the stub strictly matches those headers, the browser request won't match, and WireMock will return 404.
+Normalization removes these transport-level details so stubs work with browser clients.
+
+**Step 4: Start WireMock with the prepared stubs**
+
+[source, bash]
+----
+npm run wiremock:up
+----
+
+This command:
+- Builds a Docker image containing the normalized stub mappings
+- Starts a WireMock container listening on the microservice ports (8443, 8444, etc.)
+- The container serves the mocked API responses
+
+**Step 5: Run smoke tests against WireMock**
+
+[source, bash]
+----
+npm run smoke:test
+----
+
+This runs Cucumber smoke tests in Blue Needle that verify:
+- All five microservices are reachable
+- Health endpoints return 200
+- Version endpoints return version info
+
+The tests make requests to the WireMock container, which responds with the pre-configured stubs.
+
+**Step 6: Start the frontend dev server**
+
+[source, bash]
+----
+npm run dev
+# or
+ng serve
+----
+
+The frontend application runs on `http://localhost:4200` and makes API calls to the WireMock container (via proxy configuration in `proxy.conf.json`).
+
+=== Blue Needle Directory Structure
+
+[source, text]
+----
+blue-needle/
+├── docker-compose.iff.yml               # WireMock container definition
+├── wiremock/                            # WireMock configuration
+│   ├── mappings/                        # Normalized stub mappings
+│   │   ├── system-admin/
+│   │   │   └── mappings/
+│   │   │       ├── get_health.json
+│   │   │       ├── get_version.json
+│   │   │       └── ... (per-service endpoints)
+│   │   ├── user-account/
+│   │   ├── auth-server/
+│   │   ├── relationship/
+│   │   └── social-network/
+│   └── __files/                         # Response payloads (if large)
+├── proxy.conf.json                      # Proxy rules for ng serve
+├── package.json                         # npm scripts (stubs:prepare, wiremock:up)
+└── start-frontend.ps1                   # PowerShell script to start dev server
+----
+
+=== How the Proxy Works
+
+Blue Needle's `proxy.conf.json` forwards API calls from the frontend to WireMock:
+
+[source, json]
+----
+{
+  "/api/user-account/*": {
+    "target": "https://localhost:8444",
+    "secure": false,  // Self-signed cert
+    "changeOrigin": true
+  },
+  "/api/auth-server/*": {
+    "target": "https://localhost:8445",
+    "secure": false
+  }
+  // ... etc for all five services
+}
+----
+
+When the browser (running on `localhost:4200`) makes a request to `/api/user-account/users`, the proxy forwards it to `https://localhost:8444/users` (the WireMock container).
+
+== Benefits of Having WireMock in Your Development Environment
+
+=== 1. Parallel Development
+
+**Scenario**: The backend team is implementing a new endpoint, and the frontend team needs to start building the UI that consumes it.
+
+**Without WireMock**: Frontend must wait for the backend to complete. This creates a dependency and blocks work.
+
+**With WireMock**: 
+- Backend team writes a docGen test that documents the new endpoint
+- That test is run, generating a WireMock stub
+- Frontend team immediately starts using the stub
+- When the backend finishes, the frontend can switch to the real backend (or run smoke tests against it)
+
+=== 2. Faster Development Cycles
+
+**Example**: A frontend developer is debugging a styling issue on the user profile page.
+
+**Without WireMock**: Every page reload requires:
+- The frontend to make an HTTP request
+- The network request travels to the backend
+- The backend queries the database
+- The response travels back (500+ ms)
+
+**With WireMock**: 
+- Every page reload gets a response in 1-5 ms
+- Development is 100x faster
+- The developer can iterate without waiting for backend round trips
+
+=== 3. Reliable, Deterministic Testing
+
+**Without WireMock**: 
+- Test runs: backend returns user data → test passes
+- Test runs again: backend is slow, request times out → test fails (flaky)
+- Test runs again: data changed in database → test fails (brittle)
+
+**With WireMock**: 
+- Every test run gets the exact same response
+- Timeouts don't exist; WireMock responds immediately
+- Data never changes; it's hardcoded in the stub
+- Tests are 100% deterministic and repeatable
+
+=== 4. Testing Edge Cases and Errors
+
+**Scenario**: You want to test how the frontend handles a 500 error from the backend.
+
+**Without WireMock**: 
+- You'd need to manually break the backend (deploy a buggy version? commit a test-only change?)
+- This is dangerous and hard to reproduce consistently
+
+**With WireMock**: 
+- Write a stub that returns 500
+- Test it
+- Done
+
+You can easily create stubs for:
+- 500 Internal Server Error
+- 404 Not Found
+- 401 Unauthorized
+- Network timeouts (WireMock can simulate delay)
+- Malformed responses
+
+=== 5. Contract Guarantees
+
+**Scenario**: A backend team changes the API response format (e.g., `firstName` → `first_name`).
+
+**Without stubs**: The frontend team might not notice until they integrate with the real backend. Debugging is chaotic.
+
+**With automatically generated stubs**:
+- Backend team runs docGen with the new format
+- Stubs are regenerated with the new format
+- Frontend team immediately sees the new stub
+- Frontend is updated to use the new format
+- Everything stays in sync
+
+=== 6. Independent Testing
+
+**Scenario**: You're on a plane with no internet. The backend is running in the cloud (you can't access it).
+
+**Without WireMock**: You can't run tests. You're blocked.
+
+**With WireMock**: The stubs are local files. You can run the entire frontend test suite offline.
+
+=== 7. Staging and Demo Environments
+
+**Scenario**: You want to demonstrate a feature, but the backend staging environment is unstable.
+
+**Without WireMock**: The demo fails when the backend returns errors.
+
+**With WireMock**: You can run a demo using local stubs. Responses are 100% predictable and reliable.
+
+== The Complete Flow: End-to-End Example
+
+=== Scenario: Adding a New User Profile Endpoint
+
+Let's walk through a complete example of how the stub generation process works in practice.
+
+==== Phase 1: Backend Team Defines the Endpoint (Red Thread)
+
+**Step 1a**: Backend team adds a new endpoint:
+
+[source, java]
+----
+@GetMapping("/profile/{userId}")
+public UserProfile getUserProfile(@PathVariable Long userId) {
+    return userService.getProfile(userId);
+}
+----
+
+**Step 1b**: Team writes a docGen test to document the endpoint:
+
+[source, java]
+----
+@Test
+public void documentGetUserProfile() {
+    client.get()
+        .uri("/profile/123")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.userId").isEqualTo(123)
+        .jsonPath("$.name").isEqualTo("Alice")
+        .jsonPath("$.bio").isNotEmpty();
+}
+----
+
+**Step 1c**: Backend team runs docGen:
+
+[source, bash]
+----
+./gradlew :user-account:docGen
+----
+
+✅ Test passes (endpoint works!)
+✅ Stubs are generated to `user-account/build/wiremock/stubs/`
+
+The generated stub looks like:
+
+[source, json]
+----
+{
+  "request": {
+    "method": "GET",
+    "url": "/profile/123"
+  },
+  "response": {
+    "status": 200,
+    "body": "{\"userId\":123,\"name\":\"Alice\",\"bio\":\"Love hiking and coding\"}"
+  }
+}
+----
+
+==== Phase 2: Frontend Team Uses the Stub (Blue Needle)
+
+**Step 2a**: Frontend team gets the updated stubs:
+
+[source, bash]
+----
+# In blue-needle directory
+npm run stubs:prepare
+npm run wiremock:up
+----
+
+**Step 2b**: Frontend team develops the profile component:
+
+[source, typescript]
+----
+export class ProfileComponent {
+  profile: UserProfile;
+
+  constructor(private userService: UserService) {}
+
+  ngOnInit() {
+    // This makes a request to WireMock (via proxy)
+    this.userService.getProfile(123).subscribe(
+      profile => this.profile = profile
+    );
+  }
+}
+----
+
+**Step 2c**: Frontend team creates the template:
+
+[source, html]
+----
+<div class="profile">
+  <h1>{{ profile.name }}</h1>
+  <p>{{ profile.bio }}</p>
+</div>
+----
+
+**Step 2d**: Frontend team runs smoke tests:
+
+[source, bash]
+----
+npm run smoke:test
+----
+
+✅ Tests pass! The stub returns 200, the expected fields are present.
+
+**Step 2e**: Frontend team runs the dev server and manually tests:
+
+[source, bash]
+----
+npm run dev
+----
+
+Opens `http://localhost:4200/profile/123` in the browser.
+✅ Profile page loads, shows "Alice" and her bio.
+
+==== Phase 3: Real Backend Integration
+
+**Step 3a**: Backend team finishes the endpoint and deploys to staging.
+
+**Step 3b**: Frontend team switches from WireMock to the real backend:
+
+[source, bash]
+----
+npm run smoke:test:iff
+# Uses real backend instead of WireMock
+----
+
+✅ Tests still pass! The real backend returns the same contract as the stub.
+
+**Step 3c**: Frontend team manually verifies against real backend:
+
+Opens the staging URL in the browser.
+✅ Profile page loads with real data from the backend.
+
+**Result**: Zero surprises. The stub guaranteed the contract; the real backend implemented it correctly.
+
+== Troubleshooting Common Issues
+
+=== Issue 1: Frontend Request Gets 404 from WireMock
+
+**Problem**: Browser makes a request, WireMock returns 404 even though a stub exists.
+
+**Cause**: The request headers don't match the stub.
+Stubs from docGen expect headers like `Content-Type: application/json`, but the browser might send different headers.
+
+**Solution**: Run `npm run stubs:prepare` in Blue Needle to normalize the stubs for browser clients.
+
+=== Issue 2: Stubs Are Outdated
+
+**Problem**: Frontend is using old stubs from a previous version.
+
+**Cause**: docGen hasn't been run since the backend changed.
+
+**Solution**: Regenerate stubs:
+[source, bash]
+----
+cd red-thread
+./gradlew :system-admin:docGen :user-account:docGen :auth-server:docGen :relationship:docGen :social-network:docGen
+cd ../blue-needle
+npm run stubs:prepare
+npm run wiremock:up
+----
+
+=== Issue 3: WireMock Container Won't Start
+
+**Problem**: `npm run wiremock:up` fails.
+
+**Cause**: Usually a port conflict (8443, 8444, etc. already in use) or Docker daemon not running.
+
+**Solution**: 
+- Check if Docker is running: `docker ps`
+- Kill processes using ports: `lsof -i :8443` and `kill <PID>`
+- Or change ports in `docker-compose.iff.yml`
+
+== Summary: Key Takeaways
+
+1. **WireMock stubs are automatically generated** from tests in Red Thread's `docGen` suite, ensuring they match the real API contract.
+
+2. **The process is fully automated**:
+   - docGen runs contract tests against the real embedded service
+   - REST Docs captures request/response details
+   - WireMockSnippet converts those details to stub mappings
+   - Stubs are written to `build/wiremock/stubs/`
+
+3. **Blue Needle uses these stubs** to enable frontend development without a running backend:
+   - Stubs are copied to `blue-needle/wiremock/`
+   - Normalized for browser clients (`npm run stubs:prepare`)
+   - WireMock container serves them (`npm run wiremock:up`)
+   - Frontend makes requests to the WireMock container
+
+4. **Benefits are significant**:
+   - Parallel development (frontend doesn't wait for backend)
+   - Faster feedback loops (mock responses are instant)
+   - Deterministic tests (no flakiness)
+   - Contract guarantees (stubs match reality)
+   - Easy error scenario testing (404, 500, etc.)
+
+5. **The contract is the single source of truth**:
+   - When the backend API changes, the test changes
+   - Stubs are automatically regenerated
+   - Frontend immediately sees the updated contract
+   - Everything stays in sync
+
+== Getting Started
+
+To start using WireMock stubs in your development:
+
+=== For Backend Developers (Red Thread)
+
+1. Write tests in `src/docGen/java/` that exercise your API endpoints
+2. Run: `./gradlew <service>:docGen`
+3. Verify that stubs are generated to `<service>/build/wiremock/stubs/`
+
+=== For Frontend Developers (Blue Needle)
+
+1. In the `red-thread` directory, generate stubs from all services:
+   +
+   [source, bash]
+   ----
+   ./gradlew :system-admin:docGen :user-account:docGen :auth-server:docGen :relationship:docGen :social-network:docGen
+   ----
+
+2. In the `blue-needle` directory, prepare and start WireMock:
+   +
+   [source, bash]
+   ----
+   npm run stubs:prepare
+   npm run wiremock:up
+   ----
+
+3. In a new terminal, start the dev server:
+   +
+   [source, bash]
+   ----
+   npm run start
+   ----
+
+4. Open `http://localhost:4200` in your browser and start developing!
+
+=== Quick Reference: Essential Commands
+
+[source, bash]
+----
+# RED THREAD — Generate stubs from all microservices
+cd red-thread
+./gradlew :system-admin:docGen \
+          :user-account:docGen \
+          :auth-server:docGen \
+          :relationship:docGen \
+          :social-network:docGen
+
+# BLUE NEEDLE — Start WireMock with stubs (also runs stubs:prepare automatically)
+cd ../blue-needle
+npm run wiremock:up
+
+# BLUE NEEDLE — Run smoke tests
+npm run smoke:test
+
+# BLUE NEEDLE — Start dev server
+npm run start
+
+# BLUE NEEDLE — Stop WireMock
+npm run wiremock:down
+
+# Verify WireMock is running
+docker ps | grep wiremock
+
+# Make a test request to a stub
+curl -s -k -H "Accept: application/json" https://localhost:8444/actuator/health | jq .
+----
+
+=== Troubleshooting
+
+**Issue: Gradle build takes too long**
+
+_Solution_: You should have run the setup step before the demo. If not, skip to Part 4 (run tests against already-generated stubs) or use a pre-generated build.
+
+**Issue: Docker won't start**
+
+_Solution_: Ensure Docker is running (`docker ps` works). If not, start Docker Desktop.
+
+**Issue: Port 8443/8444 already in use**
+
+_Solution_: 
+[source, bash]
+----
+# Kill the process using the port
+lsof -i :8444
+kill -9 <PID>
+
+# Or just use different ports in docker-compose.iff.yml
+----
+
+**Issue: curl returns certificate error**
+
+_Solution_: The `-k` flag in curl disables certificate validation (which is correct for self-signed certs). Use: `curl -s -k https://localhost:8444/...`
+
+**Issue: npm run commands fail**
+
+_Solution_: Ensure you're in the `blue-needle` directory and npm dependencies are installed (`npm install`).
+
+**Issue: Tests fail with 404**
+
+_Solution_: WireMock might not be running or stubs weren't prepared. Run:
+[source, bash]
+----
+npm run stubs:prepare
+npm run wiremock:up
+sleep 3  # Give it time to start
+npm run smoke:test
+----
+
+== Conclusion
+
+WireMock stub generation is a powerful technique that enables:
+- **Backend teams** to verify their APIs match specifications
+- **Frontend teams** to develop and test without dependencies on the backend
+- **Both teams** to maintain a contract that never drifts
+
+By automatically generating stubs from the same tests that verify the real API, Red Thread and Blue Needle demonstrate how a disciplined approach to contracts and testing can dramatically improve developer productivity and system reliability.

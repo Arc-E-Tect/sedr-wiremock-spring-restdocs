@@ -1,0 +1,20 @@
+{
+  "id": "de246b17-fbee-40b4-a4f3-f2defe4e32c4",
+  "request": {
+    "urlPath": "/",
+    "method": "GET",
+    "headers": {
+      "Accept": {
+        "equalTo": "application/json"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": "{\n  \"versionName\": \"SocialNetwork\",\n  \"versionCode\": 1.0\n}\n",
+    "headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "uuid": "de246b17-fbee-40b4-a4f3-f2defe4e32c4"
+}

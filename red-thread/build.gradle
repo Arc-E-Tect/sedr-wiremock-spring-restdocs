@@ -1,0 +1,39 @@
+/*
+ * Root build file for the Red Thread multi-project build.
+ *
+ * This file contains only cross-cutting infrastructure that is shared across
+ * ALL microservice subprojects.  Microservice-specific plugins, dependencies,
+ * test suites, JaCoCo configuration, and task configuration belong exclusively
+ * in each subproject's own build.gradle, keeping every microservice fully
+ * independent and self-contained.
+ *
+ * Adding a new microservice:
+ *   1. Create a new subdirectory, e.g. user-account/
+ *   2. Add a self-contained build.gradle inside it (copy system-admin/build.gradle as a template)
+ *   3. Register it in settings.gradle: include('user-account')
+ *   4. Run ./gradlew :user-account:build to verify standalone buildability
+ */
+
+subprojects {
+    // Every microservice resolves its dependencies from Maven Central.
+    // mavenLocal() can be uncommented for local development overrides (e.g. when working on
+    // sedr-library locally).
+    repositories {
+        // mavenLocal()  // Uncomment to use a locally-published sedr-library during development
+        mavenCentral()
+    }
+
+    // Pre-load the byte-buddy agent so Mockito does not need to self-attach it
+    // dynamically at runtime.  JDK 21+ warns (and future JDKs will disallow) that
+    // dynamic self-attachment.  Declaring the agent here applies the fix to every
+    // test suite in every microservice without repeating it in each subproject.
+    configurations {
+        byteBuddyAgent
+    }
+    dependencies {
+        byteBuddyAgent(libs.iff.byte.buddy.agent)
+    }
+    tasks.withType(Test).configureEach {
+        jvmArgs "-javaagent:${configurations.byteBuddyAgent.singleFile}"
+    }
+}

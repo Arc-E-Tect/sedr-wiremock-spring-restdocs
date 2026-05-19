@@ -1,0 +1,181 @@
+// This guide is designed to work both:
+// 1) as a standalone document, and
+// 2) as an include in api_tutorial.adoc.
+
+ifndef::from_api_tutorial[]
+= Auth-Server Client Tutorial
+:toc: left
+:toclevels: 3
+:sectnums:
+endif::from_api_tutorial[]
+
+ifdef::from_api_tutorial[]
+=== Prerequisite: Develop Against Auth-Server WireMock Stubs
+endif::from_api_tutorial[]
+
+ifndef::from_api_tutorial[]
+== Develop Against Auth-Server WireMock Stubs
+endif::from_api_tutorial[]
+
+This guide explains how client teams can develop and test against generated WireMock stubs for the Auth-Server microservice and then switch to the real service with minimal or no client code changes.
+
+=== Why this approach
+
+Developing against stubs gives client teams an early, stable integration surface:
+
+* You can start before the full Auth-Server runtime is available.
+* Contract drift is reduced because stubs are generated from the same API documentation/test flow.
+* Switching from stubs to the real service is only a base URL/configuration change.
+
+=== Responsibilities
+
+Auth-Server team responsibilities:
+
+* Generate stubs from `:auth-server:docGen`.
+* Provide a WireMock-ready stub package (from `build/wiremock/stubs`).
+* Provide and maintain the client-facing Docker Compose file.
+
+Client team responsibilities:
+
+* Use the provided Compose setup (do not invent your own stub layout).
+* Point your client to WireMock during development.
+* Run contract/integration checks against the real service before release.
+
+=== Generated stub location
+
+Auth-Server stubs are generated and synced to:
+
+* `build/wiremock/stubs`
+
+The canonical generation flow for the Auth-Server team is:
+
+[source,bash]
+----
+./gradlew :auth-server:clean :auth-server:docGen
+----
+
+After that command, the stubs are available under `build/wiremock/stubs`.
+
+=== Client Docker setup (provided by Auth-Server team)
+
+Client developers should receive a ready-to-use Compose file from the Auth-Server team, for example:
+
+* `docker-compose.auth-server-client.yml`
+
+Example (reference implementation, owned by Auth-Server team):
+
+[source,yaml]
+----
+services:
+  auth-server-wiremock:
+    image: wiremock/wiremock:3.13.2-2-alpine
+    platform: linux/amd64
+    container_name: auth-server-wiremock
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./wiremock/mappings:/home/wiremock/mappings:ro
+      - ./wiremock/__files:/home/wiremock/__files:ro
+    command:
+      - "--https-port"
+      - "8443"
+      - "--global-response-templating"
+      - "--verbose"
+----
+
+Notes:
+
+* The `wiremock/mappings` directory is expected to contain browser-compatible mappings.
+* If no body files are needed, `wiremock/__files` can be an empty directory.
+* On Apple Silicon hosts, the `platform: linux/amd64` setting is required for this WireMock image tag.
+
+=== Prepare browser-compatible mappings
+
+Generated stubs may contain strict matcher headers that are not stable for browser clients (`User-Agent`, `accept-encoding`, `X-Forwarded-For`).
+Before starting Docker Compose for a browser-based client, prepare mappings that remove these transport-level header matchers.
+
+=== Start and verify WireMock
+
+From the client project:
+
+[source,bash]
+----
+docker compose -f docker-compose.auth-server-client.yml up -d
+----
+
+Sanity check:
+
+[source,bash]
+----
+curl -k -i https://localhost:8443/__admin/mappings
+----
+
+You should receive a successful response with loaded mappings.
+
+=== Client configuration for seamless switching
+
+Use a single base URL setting in your client, for example:
+
+* `AUTH_SERVER_BASE_URL`
+
+Development against stubs:
+
+* `AUTH_SERVER_BASE_URL=https://localhost:8443`
+
+Integration/production against real service:
+
+* `AUTH_SERVER_BASE_URL=https://<real-auth-server-host>`
+
+Do not hardcode URLs in client code. Keep URL selection purely configuration-driven.
+
+=== Recommended client development workflow
+
+1. Pull the latest stub package and the provided Compose file from the Auth-Server team.
+2. Start WireMock locally.
+3. Develop client features against the stubbed endpoints.
+4. Add client-side tests that assert request/response handling.
+5. Periodically refresh stubs and re-run tests.
+6. Before release, run the same tests against the real Auth-Server environment by changing only `AUTH_SERVER_BASE_URL`.
+
+=== Versioning and compatibility contract
+
+Auth-Server team should version stub deliveries, for example using:
+
+* service version
+* API/tutorial generation date
+* commit SHA
+
+Client teams should pin to a known stub version and update intentionally.
+
+=== Troubleshooting
+
+If a mapping is not matched:
+
+* Check path and method first.
+* Check required headers (for example `x-api-key`, content type, accept).
+* Check request body shape and field names.
+* Inspect WireMock logs:
+
+[source,bash]
+----
+docker logs auth-server-wiremock
+----
+
+If stubs look stale:
+
+* Request the latest stub package from the Auth-Server team.
+* Recreate the container:
+
+[source,bash]
+----
+docker compose -f docker-compose.auth-server-client.yml down -v
+docker compose -f docker-compose.auth-server-client.yml up -d
+----
+
+=== Exit criteria for moving to real service
+
+Client implementation is ready to switch when:
+
+* All client tests pass against WireMock stubs.
+* The same tests pass against a real Auth-Server environment with only base URL/config differences.
+* No client code change is required for the switch.
