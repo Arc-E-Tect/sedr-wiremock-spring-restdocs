@@ -1,0 +1,125 @@
+= SEDR: WireMock Stub Generation with Spring REST Docs
+:toc:
+:toclevels: 2
+:sectnums:
+
+== Introduction
+
+This repository is a standalone spin-off from the book _Software Engineering Done Right_ (SEDR).
+It highlights a specific practice from the book that deserves its own dedicated focus: automatically generating WireMock stubs from Spring REST Docs contract tests, and using those stubs to drive Angular micro-frontend development without requiring the full backend to be running.
+
+The example application is called *IFF — Identification: Friend or Family*.
+It is split into two top-level projects that mirror a real-world micro-frontend + microservices setup:
+
+`red-thread/`::
+A Gradle multi-project build containing five Spring Boot microservices (Java 21):
+`auth-server`, `user-account`, `relationship`, `social-network`, and `system-admin`.
+Each service uses Spring REST Docs to write contract tests that simultaneously validate the API and emit WireMock stub mappings as a build artefact.
+
+`blue-needle/`::
+An Angular 21 micro-frontend with one lazy-loaded route per IFF microservice.
+It can run against the generated WireMock stubs (no IFF build needed) or against the full running application stack.
+A Cucumber + Playwright BDD smoke suite validates both modes.
+
+The full explanation of how stub generation works, why it matters, and how to run the project end-to-end is in link:TUTORIAL.adoc[TUTORIAL.adoc].
+
+== Repository structure
+
+[source]
+----
+sedr-wiremock-spring-restdocs/
+├── red-thread/            # Spring Boot microservices (IFF backend)
+│   ├── auth-server/
+│   ├── user-account/
+│   ├── relationship/
+│   ├── social-network/
+│   └── system-admin/
+├── blue-needle/           # Angular micro-frontend
+│   ├── src/
+│   ├── blue-needle-smoke/ # Cucumber + Playwright BDD smoke tests
+│   └── wiremock/          # Normalised stub mappings (browser-compatible)
+├── TUTORIAL.adoc          # Comprehensive guide to the stub generation workflow
+└── CONTRIBUTING.md
+----
+
+== Quick start
+
+=== Red Thread (backend / stub generation)
+
+.Prerequisites
+* Java 21 (tested with https://docs.aws.amazon.com/corretto/latest/corretto-21-ug/downloads-list.html[Amazon Corretto 21])
+* Docker
+
+[source,console]
+----
+# Build all microservices and generate WireMock stubs
+cd red-thread
+./gradlew build
+
+# Generate stubs only (faster, skips unit/integration tests)
+./gradlew :system-admin:docGen :user-account:docGen :auth-server:docGen \
+          :relationship:docGen :social-network:docGen --no-daemon
+----
+
+=== Blue Needle (frontend against WireMock stubs)
+
+.Prerequisites
+* Node.js 22 or 24
+* Docker
+
+[source,console]
+----
+cd blue-needle
+npm install
+
+# Start WireMock containers with normalised stubs
+npm run wiremock:up
+
+# Start the Angular dev server
+npm start
+----
+
+Open http://localhost:4200 in a browser.
+
+See link:blue-needle/README.md[blue-needle/README.md] and link:red-thread/README.md[red-thread/README.md] for detailed instructions on each project.
+
+== Branches and the book
+
+Each branch in this repository corresponds to a chapter in _Software Engineering Done Right_ that introduces or extends this example.
+Branch names follow the pattern `sedr_sec<section>_ch<chapter>`:
+
+[cols="1,3"]
+|===
+| Branch | Meaning
+
+| `sedr_sec04_ch06`
+| Section 4, Chapter 6 — the chapter that introduces this WireMock stub generation example
+
+| `main`
+| Latest consolidated state of all examples
+|===
+
+== Commit message format
+
+This repository follows the https://www.conventionalcommits.org/[Conventional Commits] specification.
+
+[source]
+----
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+----
+
+Supported types: `feat`, `fix`, `refactor`, `improvement`, `scenario`, `maintenance`, `docs`, `test`, `build`, `ci`, `chore`.
+
+Breaking changes are indicated with `!` after the type or a `BREAKING CHANGE:` footer.
+
+== Contributing
+
+See link:CONTRIBUTING.md[CONTRIBUTING.md].
+
+Enjoy…
+
+Arc-E-Tect
