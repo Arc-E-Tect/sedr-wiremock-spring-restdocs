@@ -39,6 +39,10 @@ if [[ -n "$staged_files" ]]; then
     [[ "$file" =~ \.example$ ]] && continue
     [[ "$file" =~ \.sample$ ]] && continue
     [[ "$file" =~ \.template$ ]] && continue
+    # Spring REST Docs description files — property keys describe API fields
+    # (e.g. request_field.password=Description of the password field)
+    # These are documentation, not credentials
+    [[ "$file" =~ -descriptions\.properties$ ]] && continue
 
     # Check staged content for secrets.
     # Filter out lines that are clearly dynamic env-var lookups (e.g. Groovy
